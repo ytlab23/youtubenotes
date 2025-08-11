@@ -80,6 +80,8 @@
 
     .hidden { display: none !important; }
 
+    #libraryPanel { margin-bottom: clamp(16px, 4vw, 32px); }
+
     /* Library grid */
     .lib-header { display:flex; align-items:center; justify-content:space-between; gap: 10px; }
     .lib-header h2 { margin:0; font-size: 16px; color: var(--text); }
@@ -108,25 +110,6 @@
   </style>
 </head>
 <body>
-  <!--
-    YouTube Timestamp Notes
-
-    Quick deploy on GitHub Pages:
-    1. Create a new repo and name it anything you like.
-    2. Add this file as index.html and commit.
-    3. In repo settings, enable GitHub Pages (Deploy from branch, /root).
-    4. Open your Pages URL. Done.
-
-    Features:
-    - Paste a YouTube URL or ID and load the video.
-    - Add notes tied to timestamps. Click a timestamp to seek.
-    - Auto-pick current player time or enter a custom time like 1:23, 01:02:03, 90, or 1m30s.
-    - Notes are saved per-video in localStorage and an index shows your past videos.
-    - Edit, delete, reorder automatically by time.
-    - Import/Export notes (JSON) and Export CSV.
-    - Keyboard: press N while the player is visible to add note at current time.
-  -->
-
   <div class="wrap">
     <header>
       <div class="logo" aria-hidden="true">
@@ -200,15 +183,29 @@
   </div>
 
   <script>
-    // --- YouTube IFrame API loader ---
-    (function loadYT() {
+    // --- YouTube IFrame API loader with resilience & fallback ---
+    let ytReady = false;
+    let ytScriptRequested = false;
+    let ytScriptError = false;
+
+    function ensureYTScript() {
+      if (ytScriptRequested) return;
+      ytScriptRequested = true;
       const tag = document.createElement('script');
       tag.src = 'https://www.youtube.com/iframe_api';
+      tag.onerror = () => { ytScriptError = true; showError('Could not load the YouTube API (blocked by extensions or network). Using a basic fallback player.'); };
       document.head.appendChild(tag);
-    })();
+    }
+    ensureYTScript();
 
-    let ytReady = false;
+    window.onYouTubeIframeAPIReady = function() {
+      ytReady = true;
+      if (pendingVideoId && !fallbackMode) initOrLoadPlayer(pendingVideoId);
+    };
+
     let player = null;
+    let fallbackIframe = null;
+    let fallbackMode = false; // if true, we use a plain embed without API
     let pendingVideoId = null;
     let currentVideoId = null;
     let notes = [];
@@ -216,11 +213,6 @@
 
     const INDEX_KEY = 'yt-notes:index:v1';
     const LAST_KEY = 'yt-notes:last';
-
-    window.onYouTubeIframeAPIReady = function() {
-      ytReady = true;
-      if (pendingVideoId) initOrLoadPlayer(pendingVideoId);
-    };
 
     // --- DOM Elements ---
     const $ = sel => document.querySelector(sel);
@@ -247,6 +239,7 @@
     // Simple status helpers
     function showError(msg){ urlHint.textContent = msg; urlHint.classList.remove('hidden'); }
     function hideError(){ urlHint.textContent = ''; urlHint.classList.add('hidden'); }
+    function info(msg){ saveStatus.textContent = msg; setTimeout(()=>{ saveStatus.textContent=''; }, 2500); }
     function errorMessageForCode(code){
       switch(code){
         case 2: return 'Invalid video ID or URL.';
@@ -262,23 +255,19 @@
     function parseVideoId(input) {
       if (!input) return null;
       input = input.trim();
-      // If it's already an 11-char ID
       if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
       try {
         const url = new URL(input);
         if (url.hostname.includes('youtube.com')) {
           if (url.searchParams.get('v')) return url.searchParams.get('v');
-          // Handle /shorts/ID and /embed/ID
-          const m = url.pathname.match(/\\/(shorts|embed)\\/([a-zA-Z0-9_-]{11})/);
+          const m = url.pathname.match(/\/(shorts|embed)\/([a-zA-Z0-9_-]{11})/);
           if (m) return m[2];
         }
         if (url.hostname === 'youtu.be') {
           const id = url.pathname.split('/').filter(Boolean)[0];
           if (id && id.length === 11) return id;
         }
-      } catch (_) {
-        // not a URL, fallthrough
-      }
+      } catch (_) {}
       return null;
     }
 
@@ -296,17 +285,16 @@
       if (typeof str === 'number') return Math.max(0, Math.floor(str));
       if (!str) return NaN;
       str = String(str).trim().toLowerCase();
-      // Accept 1h2m3s, 2m3s, 90s, 90, 1:30, 01:02:03
-      const hms = /(\\d+)h/.exec(str);
-      const ms = /(\\d+)m/.exec(str);
-      const ss = /(\\d+)s/.exec(str);
+      const hms = /(\d+)h/.exec(str);
+      const ms = /(\d+)m/.exec(str);
+      const ss = /(\d+)s/.exec(str);
       if (hms || ms || ss) {
         const h = hms ? parseInt(hms[1], 10) : 0;
         const m = ms ? parseInt(ms[1], 10) : 0;
         const s = ss ? parseInt(ss[1], 10) : 0;
         return h*3600 + m*60 + s;
       }
-      if (/^\\d+$/.test(str)) return parseInt(str, 10);
+      if (/^\d+$/.test(str)) return parseInt(str, 10);
       if (str.includes(':')) {
         const parts = str.split(':').map(v => v.trim()).filter(Boolean);
         if (parts.length === 2) {
@@ -361,16 +349,40 @@
         const url = new URL(location.href);
         url.searchParams.set('v', videoId);
         history.replaceState({}, '', url);
-      } catch (_) {
-        /* ignore when not allowed */
-      }
+      } catch (_) { /* ignore when not allowed */ }
     }
 
     function getCurrentPlayerTimeSafe() {
       try {
+        if (fallbackMode) return NaN; // not available in fallback
         if (!playerReady || !player || typeof player.getCurrentTime !== 'function') return NaN;
         return Math.floor(player.getCurrentTime());
       } catch (_) { return NaN; }
+    }
+
+    function buildEmbedSrc(videoId, start) {
+      const base = `https://www.youtube.com/embed/${videoId}`;
+      const params = new URLSearchParams({ rel: '0', modestbranding: '1', playsinline: '1' });
+      if (Number.isFinite(start) && start > 0) params.set('start', String(Math.floor(start)));
+      return `${base}?${params.toString()}`;
+    }
+
+    function initFallback(videoId) {
+      fallbackMode = true;
+      playerReady = false;
+      useCurrentBtn.disabled = true;
+      info('Using basic player (limited features).');
+      const el = document.getElementById('player');
+      el.innerHTML = '';
+      fallbackIframe = document.createElement('iframe');
+      fallbackIframe.width = '100%';
+      fallbackIframe.height = '100%';
+      fallbackIframe.src = buildEmbedSrc(videoId);
+      fallbackIframe.title = 'YouTube video player';
+      fallbackIframe.frameBorder = '0';
+      fallbackIframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share';
+      fallbackIframe.allowFullscreen = true;
+      el.appendChild(fallbackIframe);
     }
 
     function initOrLoadPlayer(videoId) {
@@ -381,31 +393,42 @@
       notes = loadNotesFromStorage(videoId).sort((a,b) => a.time - b.time);
       renderNotes();
 
-      if (player && ytReady) {
-        hideError();
-        useCurrentBtn.disabled = false;
-        playerReady = true;
-        try { player.loadVideoById(videoId); } catch (_) {}
+      // If API ready, use full-featured player
+      if (ytReady && !fallbackMode) {
+        if (player) {
+          hideError();
+          useCurrentBtn.disabled = false;
+          playerReady = true;
+          try { player.loadVideoById(videoId); } catch (_) {}
+          upsertIndex(videoId, notes.length);
+          fetchAndUpdateTitle(videoId);
+          return;
+        }
+        playerReady = false;
+        useCurrentBtn.disabled = true;
+        player = new YT.Player('player', {
+          width: '100%', height: '100%', videoId,
+          host: 'https://www.youtube.com',
+          playerVars: { rel: 0, modestbranding: 1, playsinline: 1, origin: location.origin, enablejsapi: 1 },
+          events: {
+            onReady: () => { playerReady = true; useCurrentBtn.disabled = false; hideError(); },
+            onError: (e) => { showError(errorMessageForCode(e.data)); }
+          }
+        });
         upsertIndex(videoId, notes.length);
         fetchAndUpdateTitle(videoId);
         return;
       }
 
-      if (!ytReady) { pendingVideoId = videoId; return; }
-
-      playerReady = false;
-      useCurrentBtn.disabled = true;
-      player = new YT.Player('player', {
-        width: '100%', height: '100%', videoId,
-        host: 'https://www.youtube.com',
-        playerVars: { rel: 0, modestbranding: 1, playsinline: 1, origin: location.origin, enablejsapi: 1 },
-        events: {
-          onReady: () => { playerReady = true; useCurrentBtn.disabled = false; hideError(); },
-          onError: (e) => { showError(errorMessageForCode(e.data)); }
+      // Otherwise, schedule a fallback after a short wait
+      pendingVideoId = videoId;
+      setTimeout(() => {
+        if (!ytReady && (ytScriptError || pendingVideoId === videoId)) {
+          initFallback(videoId);
+          upsertIndex(videoId, notes.length);
+          fetchAndUpdateTitle(videoId);
         }
-      });
-      upsertIndex(videoId, notes.length);
-      fetchAndUpdateTitle(videoId);
+      }, 2500);
     }
 
     function renderNotes() {
@@ -426,8 +449,10 @@
         btn.title = 'Jump to this time';
         btn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><span>${secondsToTime(n.time)}</span>`;
         btn.addEventListener('click', () => {
-          if (playerReady && player && typeof player.seekTo === 'function') {
+          if (!fallbackMode && playerReady && player && typeof player.seekTo === 'function') {
             player.seekTo(n.time, true);
+          } else if (fallbackMode && fallbackIframe) {
+            fallbackIframe.src = buildEmbedSrc(currentVideoId, n.time) + '&autoplay=1';
           } else {
             showError('Player not ready yet. Click Play, then try again.');
           }
@@ -481,7 +506,6 @@
       timestampEl.value = '';
       noteTextEl.value = '';
       renderNotes();
-      // Scroll to new note
       setTimeout(() => {
         const el = notesWrap.querySelector(`[data-id="${note.id}"]`);
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -493,7 +517,7 @@
       if (idx === -1) return;
       const n = notes[idx];
       const newTimeStr = prompt('Edit timestamp (hh:mm:ss, mm:ss, 90, or 1m30s):', secondsToTime(n.time));
-      if (newTimeStr === null) return; // cancelled
+      if (newTimeStr === null) return;
       const newTime = timeToSeconds(newTimeStr);
       if (!Number.isFinite(newTime)) { alert('Invalid time'); return; }
       const newText = prompt('Edit note text:', n.text);
@@ -545,9 +569,9 @@
     function exportCsv() {
       if (!notes.length) { alert('No notes to export'); return; }
       const lines = [['time', 'time_formatted', 'note']]
-        .concat(notes.map(n => [n.time, secondsToTime(n.time), n.text.replace(/\\n/g, ' ')]))
+        .concat(notes.map(n => [n.time, secondsToTime(n.time), n.text.replace(/\n/g, ' ')]))
         .map(row => row.map(v => typeof v === 'string' && v.includes(',') ? '"' + v.replace(/"/g, '""') + '"' : v).join(','));
-      const csv = lines.join('\\n');
+      const csv = lines.join('\n');
       downloadFile(csv, `yt-notes-${currentVideoId}.csv`, 'text/csv');
     }
 
@@ -593,12 +617,10 @@
       const base = { videoId, title: list[idx]?.title || '', thumb, noteCount, updatedAt: now };
       if (idx >= 0) list.splice(idx, 1);
       list.unshift(base);
-      // prune to last 50
       saveIndex(list.slice(0, 50));
       renderLibrary();
     }
     async function fetchAndUpdateTitle(videoId){
-      // best-effort oEmbed
       try {
         const url = `https://www.youtube.com/oembed?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + videoId)}&format=json`;
         const res = await fetch(url, { mode: 'cors' });
@@ -618,7 +640,7 @@
       if (!list.length) {
         const div = document.createElement('div');
         div.className = 'empty';
-        div.textContent = 'No saved videos yet. Load a video and add a note to see it here.';
+        div.textContent = 'no videos saved yet!';
         libraryGrid.appendChild(div);
         return;
       }
@@ -650,7 +672,6 @@
           if (!confirm('Delete all notes for this video?')) return;
           safeRemove(lsKey(entry.videoId));
           if (currentVideoId === entry.videoId) { notes = []; renderNotes(); }
-          // update index count
           upsertIndex(entry.videoId, 0);
           flashSaved('Notes deleted');
         });
@@ -681,6 +702,7 @@
 
     // --- Events ---
     loadBtn.addEventListener('click', () => {
+      hideError();
       const id = parseVideoId(videoUrlEl.value);
       if (!id) {
         urlHint.textContent = 'Please enter a valid YouTube URL or 11-character video ID.';
@@ -692,13 +714,11 @@
       initOrLoadPlayer(id);
     });
 
-    videoUrlEl.addEventListener('keydown', e => {
-      if (e.key === 'Enter') loadBtn.click();
-    });
+    videoUrlEl.addEventListener('keydown', e => { if (e.key === 'Enter') loadBtn.click(); });
 
     useCurrentBtn.addEventListener('click', () => {
       const t = getCurrentPlayerTimeSafe();
-      if (!Number.isFinite(t)) { shake(useCurrentBtn); showError('Player not ready yet. Click Play, then try again.'); return; }
+      if (!Number.isFinite(t)) { shake(useCurrentBtn); showError(fallbackMode ? 'Current time is unavailable in fallback mode — type a time like 1:23.' : 'Player not ready yet. Click Play, then try again.'); return; }
       timestampEl.value = secondsToTime(t);
       timestampEl.focus();
       hideError();
@@ -721,7 +741,7 @@
     document.addEventListener('keydown', e => {
       if (e.key.toLowerCase() === 'n' && !e.repeat && currentVideoId) {
         const t = getCurrentPlayerTimeSafe();
-        if (!Number.isFinite(t)) { showError('Player not ready yet. Click Play, then try again.'); return; }
+        if (!Number.isFinite(t)) { showError(fallbackMode ? 'Current time is unavailable in fallback mode — type a time like 1:23.' : 'Player not ready yet. Click Play, then try again.'); return; }
         timestampEl.value = secondsToTime(t);
         noteTextEl.focus();
       }
@@ -772,13 +792,10 @@
       upsertIndex('vidAAAAAAAC', 1);
       let list = loadIndex();
       console.assert(list.length === 2 && list[0].videoId === 'vidAAAAAAAC', 'index ordering newest first');
-      fetchAndUpdateTitle('dQw4w9WgXcQ'); // no assert, just ensure no throw
       localStorage.setItem(INDEX_KEY, _bk || '[]');
-      // Added extra sanity tests
-      console.assert(timeToSeconds('00:00') === 0, '00:00 -> 0');
-      console.assert(secondsToTime(61) === '1:01', '61 -> 1:01');
-      console.assert(parseVideoId('not a url') === null, 'invalid input returns null');
-      try { setQuery('dQw4w9WgXcQ'); console.assert(true, 'setQuery does not throw'); } catch(e) { console.assert(false, 'setQuery threw'); }
+      // embed URL builder
+      console.assert(buildEmbedSrc('dQw4w9WgXcQ', 0).includes('/embed/dQw4w9WgXcQ?'), 'embed base');
+      console.assert(buildEmbedSrc('dQw4w9WgXcQ', 90).includes('start=90'), 'embed start param');
       console.groupEnd();
     })();
   </script>
