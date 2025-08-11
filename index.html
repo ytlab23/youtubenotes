@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouTube Timestamp Notes — Timestamped Notes for YouTube Videos</title>
+  <meta name="description" content="Take timestamped notes for any YouTube video. Notes save in your browser, so when you come back you'll see your past videos and notes. Perfect for GitHub Pages." />
+  <meta property="og:title" content="YouTube Timestamp Notes" />
+  <meta property="og:description" content="Timestamped notes for YouTube videos, saved locally in your browser. Revisit to see your history." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect rx='24' width='128' height='128' fill='%236366f1'/%3E%3Cpath fill='white' d='M51 38l34 26-34 26V38z'/%3E%3C/svg%3E"/>
+  <style>
+    :root {
+      --bg: #0b0b0e;
+      --panel: #141419;
+      --muted: #7b7f8b;
+      --text: #f2f3f5;
+      --brand: #6366f1;
+      --brand-2: #8b5cf6;
+      --ok: #16a34a;
+      --warn: #ef4444;
+      --ring: rgba(99, 102, 241, .35);
+      --border: #232334;
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #f6f7fb; --panel: #ffffff; --text: #141419; --muted: #5b5f6b; --border: #e8e8ef; --ring: rgba(99,102,241,.25); }
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background: radial-gradient(1200px 800px at 20% -10%, rgba(99,102,241,.10), transparent 60%), radial-gradient(1200px 800px at 120% 10%, rgba(139,92,246,.10), transparent 60%), var(--bg); color: var(--text); line-height: 1.5; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    header { display: flex; align-items: center; gap: 14px; padding: 10px 0 18px; flex-wrap: wrap; }
+    header .logo { width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, var(--brand), var(--brand-2)); display: grid; place-items: center; flex: 0 0 auto; }
+    header .logo svg { width: 22px; height: 22px; fill: #fff; }
+    header h1 { font-size: 22px; margin: 0; letter-spacing: .2px; }
+    header p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.15); }
+    .section { padding: 18px; }
+    .grid { display: grid; gap: 16px; }
+
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    input[type="text"], textarea { width: 100%; padding: 12px 14px; background: transparent; color: var(--text); border: 1px solid var(--border); border-radius: 12px; outline: none; transition: box-shadow .2s, border-color .2s; }
+    textarea { min-height: 80px; resize: vertical; }
+    input[type="text"]:focus, textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 6px var(--ring); }
+
+    .row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+    .controls { display: grid; grid-template-columns: 160px 1fr auto; gap: 10px; }
+    .controls.narrow { grid-template-columns: 1fr; }
+
+    .btn { appearance: none; border: 1px solid var(--border); background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,.02)); color: var(--text); padding: 11px 14px; border-radius: 12px; cursor: pointer; font-weight: 600; letter-spacing: .2px; transition: transform .06s ease, box-shadow .2s, border-color .2s, background .2s; }
+    .btn:hover { box-shadow: 0 6px 20px rgba(0,0,0,.15); }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary { border-color: transparent; background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: white; }
+    .btn.ghost { background: transparent; }
+    .btn.good { border-color: #14532d; background: linear-gradient(135deg, #22c55e, #16a34a); color: #03240f; }
+    .btn.danger { border-color: #7f1d1d; background: linear-gradient(135deg, #f87171, #ef4444); color: #2a0a0a; }
+    .btn.small { padding: 6px 10px; border-radius: 10px; font-weight: 600; }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .file { position: relative; overflow: hidden; display: inline-block; }
+    .file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+    .player-wrap { aspect-ratio: 16 / 9; width: 100%; border-radius: 14px; overflow: hidden; background: #000; border: 1px solid var(--border); }
+    #player { width: 100%; height: 100%; }
+
+    .notes { display: grid; gap: 8px; margin-top: 10px; }
+    .note { display: grid; grid-template-columns: 100px 1fr auto; gap: 10px; align-items: start; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,.02)); }
+    .stamp { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .stamp button { all: unset; cursor: pointer; border-radius: 8px; padding: 6px 8px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); }
+    .stamp button:hover { border-color: var(--brand); box-shadow: 0 0 0 6px var(--ring); }
+    .stamp svg { width: 14px; height: 14px; fill: currentColor; opacity: .8; }
+
+    .note .text { white-space: pre-wrap; }
+    .note .actions { display: flex; gap: 6px; }
+
+    .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 16px 0; }
+
+    footer { color: var(--muted); font-size: 13px; padding: 24px 0 8px; }
+
+    .hidden { display: none !important; }
+
+    /* Library grid */
+    .lib-header { display:flex; align-items:center; justify-content:space-between; gap: 10px; }
+    .lib-header h2 { margin:0; font-size: 16px; color: var(--text); }
+    .lib-grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+    .card { border:1px solid var(--border); border-radius:12px; overflow:hidden; background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,.02)); display:grid; grid-template-rows: auto 1fr auto; }
+    .card .thumb { aspect-ratio:16/9; width:100%; background:#000 center/cover no-repeat; }
+    .card .body { padding:10px 12px; }
+    .card .title { font-size:14px; font-weight:600; line-height:1.3; margin:0 0 6px; }
+    .card .meta { font-size:12px; color: var(--muted); }
+    .card .foot { display:flex; gap:8px; padding:10px 12px; }
+
+    @media (max-width: 860px) {
+      .controls { grid-template-columns: 1fr; }
+      .note { grid-template-columns: 1fr; }
+      .note .actions { justify-content: end; }
+      header h1 { font-size: 20px; }
+    }
+    @media (max-width: 560px) {
+      .wrap { padding: 16px; }
+      .section { padding: 14px; }
+      header { gap:10px; }
+      header h1 { font-size: 18px; }
+      .lib-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <!--
+    YouTube Timestamp Notes
+
+    Quick deploy on GitHub Pages:
+    1. Create a new repo and name it anything you like.
+    2. Add this file as index.html and commit.
+    3. In repo settings, enable GitHub Pages (Deploy from branch, /root).
+    4. Open your Pages URL. Done.
+
+    Features:
+    - Paste a YouTube URL or ID and load the video.
+    - Add notes tied to timestamps. Click a timestamp to seek.
+    - Auto-pick current player time or enter a custom time like 1:23, 01:02:03, 90, or 1m30s.
+    - Notes are saved per-video in localStorage and an index shows your past videos.
+    - Edit, delete, reorder automatically by time.
+    - Import/Export notes (JSON) and Export CSV.
+    - Keyboard: press N while the player is visible to add note at current time.
+  -->
+
+  <div class="wrap">
+    <header>
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M9 7l8 5-8 5z"/></svg>
+      </div>
+      <div>
+        <h1>YouTube Timestamp Notes</h1>
+        <p>Take quick notes tied to exact moments. Saved locally, with a history of your videos.</p>
+      </div>
+    </header>
+
+    <!-- Library / history panel -->
+    <div class="panel section grid" id="libraryPanel">
+      <div class="lib-header">
+        <h2>Your saved videos</h2>
+        <div class="toolbar">
+          <button class="btn small ghost" id="refreshLibraryBtn" title="Reload your saved list">Refresh</button>
+          <button class="btn small ghost" id="clearLibraryBtn" title="Remove the saved list (notes stay until removed per video)">Clear list</button>
+        </div>
+      </div>
+      <div id="libraryGrid" class="lib-grid" aria-live="polite"></div>
+    </div>
+
+    <!-- Loader panel -->
+    <div class="panel section grid">
+      <div class="row">
+        <div>
+          <label for="videoUrl">YouTube URL or Video ID</label>
+          <input type="text" id="videoUrl" placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ" />
+        </div>
+        <button class="btn primary" id="loadBtn">Load video</button>
+      </div>
+      <div id="urlHint" class="hidden" aria-live="polite" style="color: var(--warn);"></div>
+    </div>
+
+    <!-- Player + note controls -->
+    <div id="playerSection" class="panel section grid hidden">
+      <div class="player-wrap"><div id="player" role="application" aria-label="YouTube video player"></div></div>
+
+      <div class="controls" id="controls">
+        <button class="btn" id="useCurrentBtn" title="Use the player's current time">Use current time</button>
+        <div>
+          <label for="timestamp">Timestamp</label>
+          <input type="text" id="timestamp" placeholder="hh:mm:ss, mm:ss, 90, or 1m30s" />
+        </div>
+        <button class="btn good" id="saveNoteBtn">Save note</button>
+        <div style="grid-column: 1 / -1;">
+          <label for="noteText">Note</label>
+          <textarea id="noteText" placeholder="Write your note..."></textarea>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn ghost small" id="exportJsonBtn">Export JSON</button>
+        <button class="btn ghost small" id="exportCsvBtn">Export CSV</button>
+        <label class="file btn ghost small" title="Import a JSON file previously exported">
+          Import JSON<input type="file" id="importJsonInput" accept="application/json" />
+        </label>
+        <button class="btn danger small" id="clearAllBtn" title="Delete all notes for this video">Clear all</button>
+        <div id="saveStatus" style="margin-left: 6px; color: var(--muted);"></div>
+      </div>
+
+      <div id="notesWrap" class="notes">
+        <div class="empty" id="emptyState">No notes yet. Add one using the current time, or type a timestamp.</div>
+      </div>
+    </div>
+
+    <footer>
+      <p>Tips: click a timestamp to jump. Press N to add at the current time. Notes are saved per video in this browser. Free project maintained <a href="https://tubepilot.ai/" target="_blank" rel="noopener">by TubePilot</a>.</p>
+    </footer>
+  </div>
+
+  <script>
+    // --- YouTube IFrame API loader ---
+    (function loadYT() {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+    })();
+
+    let ytReady = false;
+    let player = null;
+    let pendingVideoId = null;
+    let currentVideoId = null;
+    let notes = [];
+    let playerReady = false;
+
+    const INDEX_KEY = 'yt-notes:index:v1';
+    const LAST_KEY = 'yt-notes:last';
+
+    window.onYouTubeIframeAPIReady = function() {
+      ytReady = true;
+      if (pendingVideoId) initOrLoadPlayer(pendingVideoId);
+    };
+
+    // --- DOM Elements ---
+    const $ = sel => document.querySelector(sel);
+    const videoUrlEl = $('#videoUrl');
+    const loadBtn = $('#loadBtn');
+    const urlHint = $('#urlHint');
+    const libraryGrid = $('#libraryGrid');
+    const libraryPanel = $('#libraryPanel');
+    const refreshLibraryBtn = $('#refreshLibraryBtn');
+    const clearLibraryBtn = $('#clearLibraryBtn');
+    const playerSection = $('#playerSection');
+    const useCurrentBtn = $('#useCurrentBtn');
+    const timestampEl = $('#timestamp');
+    const noteTextEl = $('#noteText');
+    const saveNoteBtn = $('#saveNoteBtn');
+    const notesWrap = $('#notesWrap');
+    const emptyState = $('#emptyState');
+    const saveStatus = $('#saveStatus');
+    const importInput = $('#importJsonInput');
+
+    // Disable until the player is ready
+    useCurrentBtn.disabled = true;
+
+    // Simple status helpers
+    function showError(msg){ urlHint.textContent = msg; urlHint.classList.remove('hidden'); }
+    function hideError(){ urlHint.textContent = ''; urlHint.classList.add('hidden'); }
+    function errorMessageForCode(code){
+      switch(code){
+        case 2: return 'Invalid video ID or URL.';
+        case 5: return 'The HTML5 player could not load this video.';
+        case 100: return 'This video is unavailable (removed or private).';
+        case 101:
+        case 150: return 'Embedding is disabled by the video owner.';
+        default: return 'Could not load the video. Try another ID/URL.';
+      }
+    }
+
+    // --- Helpers ---
+    function parseVideoId(input) {
+      if (!input) return null;
+      input = input.trim();
+      // If it's already an 11-char ID
+      if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
+      try {
+        const url = new URL(input);
+        if (url.hostname.includes('youtube.com')) {
+          if (url.searchParams.get('v')) return url.searchParams.get('v');
+          // Handle /shorts/ID and /embed/ID
+          const m = url.pathname.match(/\\/(shorts|embed)\\/([a-zA-Z0-9_-]{11})/);
+          if (m) return m[2];
+        }
+        if (url.hostname === 'youtu.be') {
+          const id = url.pathname.split('/').filter(Boolean)[0];
+          if (id && id.length === 11) return id;
+        }
+      } catch (_) {
+        // not a URL, fallthrough
+      }
+      return null;
+    }
+
+    function secondsToTime(total) {
+      total = Math.max(0, Math.floor(total || 0));
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      return h > 0
+        ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+        : `${m}:${String(s).padStart(2,'0')}`;
+    }
+
+    function timeToSeconds(str) {
+      if (typeof str === 'number') return Math.max(0, Math.floor(str));
+      if (!str) return NaN;
+      str = String(str).trim().toLowerCase();
+      // Accept 1h2m3s, 2m3s, 90s, 90, 1:30, 01:02:03
+      const hms = /(\\d+)h/.exec(str);
+      const ms = /(\\d+)m/.exec(str);
+      const ss = /(\\d+)s/.exec(str);
+      if (hms || ms || ss) {
+        const h = hms ? parseInt(hms[1], 10) : 0;
+        const m = ms ? parseInt(ms[1], 10) : 0;
+        const s = ss ? parseInt(ss[1], 10) : 0;
+        return h*3600 + m*60 + s;
+      }
+      if (/^\\d+$/.test(str)) return parseInt(str, 10);
+      if (str.includes(':')) {
+        const parts = str.split(':').map(v => v.trim()).filter(Boolean);
+        if (parts.length === 2) {
+          const [m, s] = parts.map(x => parseInt(x, 10));
+          if (Number.isFinite(m) && Number.isFinite(s)) return m*60 + s;
+        }
+        if (parts.length === 3) {
+          const [h, m, s] = parts.map(x => parseInt(x, 10));
+          if ([h,m,s].every(Number.isFinite)) return h*3600 + m*60 + s;
+        }
+      }
+      return NaN;
+    }
+
+    function uuid() {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      return 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+
+    function lsKey(videoId) { return `yt-notes:${videoId}`; }
+
+    function loadNotesFromStorage(videoId) {
+      try {
+        const raw = localStorage.getItem(lsKey(videoId));
+        const list = raw ? JSON.parse(raw) : [];
+        return Array.isArray(list) ? list : [];
+      } catch (_) { return []; }
+    }
+
+    function saveNotesToStorage() {
+      if (!currentVideoId) return;
+      try {
+        localStorage.setItem(lsKey(currentVideoId), JSON.stringify(notes));
+        upsertIndex(currentVideoId, notes.length);
+        flashSaved('Saved');
+      } catch (err) {
+        flashSaved('Could not save', true);
+      }
+    }
+
+    let saveTimer = null;
+    function flashSaved(msg, isError) {
+      clearTimeout(saveTimer);
+      saveStatus.textContent = msg;
+      saveStatus.style.color = isError ? 'var(--warn)' : 'var(--muted)';
+      saveTimer = setTimeout(() => { saveStatus.textContent = ''; }, 1400);
+    }
+
+    function setQuery(videoId) {
+      try {
+        if (location.protocol === 'file:') return; // avoid issues when opened locally
+        const url = new URL(location.href);
+        url.searchParams.set('v', videoId);
+        history.replaceState({}, '', url);
+      } catch (_) {
+        /* ignore when not allowed */
+      }
+    }
+
+    function getCurrentPlayerTimeSafe() {
+      try {
+        if (!playerReady || !player || typeof player.getCurrentTime !== 'function') return NaN;
+        return Math.floor(player.getCurrentTime());
+      } catch (_) { return NaN; }
+    }
+
+    function initOrLoadPlayer(videoId) {
+      currentVideoId = videoId;
+      localStorage.setItem(LAST_KEY, videoId);
+      setQuery(videoId);
+      playerSection.classList.remove('hidden');
+      notes = loadNotesFromStorage(videoId).sort((a,b) => a.time - b.time);
+      renderNotes();
+
+      if (player && ytReady) {
+        hideError();
+        useCurrentBtn.disabled = false;
+        playerReady = true;
+        try { player.loadVideoById(videoId); } catch (_) {}
+        upsertIndex(videoId, notes.length);
+        fetchAndUpdateTitle(videoId);
+        return;
+      }
+
+      if (!ytReady) { pendingVideoId = videoId; return; }
+
+      playerReady = false;
+      useCurrentBtn.disabled = true;
+      player = new YT.Player('player', {
+        width: '100%', height: '100%', videoId,
+        host: 'https://www.youtube.com',
+        playerVars: { rel: 0, modestbranding: 1, playsinline: 1, origin: location.origin, enablejsapi: 1 },
+        events: {
+          onReady: () => { playerReady = true; useCurrentBtn.disabled = false; hideError(); },
+          onError: (e) => { showError(errorMessageForCode(e.data)); }
+        }
+      });
+      upsertIndex(videoId, notes.length);
+      fetchAndUpdateTitle(videoId);
+    }
+
+    function renderNotes() {
+      notesWrap.innerHTML = '';
+      if (notes.length === 0) {
+        emptyState.classList.remove('hidden');
+        notesWrap.appendChild(emptyState);
+        return;
+      }
+      notes.forEach(n => {
+        const item = document.createElement('div');
+        item.className = 'note';
+        item.dataset.id = n.id;
+
+        const stamp = document.createElement('div');
+        stamp.className = 'stamp';
+        const btn = document.createElement('button');
+        btn.title = 'Jump to this time';
+        btn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><span>${secondsToTime(n.time)}</span>`;
+        btn.addEventListener('click', () => {
+          if (playerReady && player && typeof player.seekTo === 'function') {
+            player.seekTo(n.time, true);
+          } else {
+            showError('Player not ready yet. Click Play, then try again.');
+          }
+        });
+        stamp.appendChild(btn);
+
+        const text = document.createElement('div');
+        text.className = 'text';
+        text.textContent = n.text;
+
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn small ghost';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => editNote(n.id));
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn small danger';
+        delBtn.textContent = 'Delete';
+        delBtn.addEventListener('click', () => deleteNote(n.id));
+
+        actions.appendChild(editBtn);
+        actions.appendChild(delBtn);
+
+        item.appendChild(stamp);
+        item.appendChild(text);
+        item.appendChild(actions);
+        notesWrap.appendChild(item);
+      });
+    }
+
+    function addNote() {
+      const tRaw = timestampEl.value.trim();
+      let time = tRaw ? timeToSeconds(tRaw) : getCurrentPlayerTimeSafe();
+      const text = noteTextEl.value.trim();
+
+      if (!text) { shake(noteTextEl); noteTextEl.focus(); return; }
+      if (!Number.isFinite(time)) {
+        shake(timestampEl);
+        showError('Enter a timestamp or click "Use current time" after the player is ready.');
+        timestampEl.focus();
+        return;
+      }
+
+      const note = { id: uuid(), time: Math.max(0, Math.floor(time)), text, createdAt: Date.now() };
+      notes.push(note);
+      notes.sort((a,b) => a.time - b.time);
+      saveNotesToStorage();
+      timestampEl.value = '';
+      noteTextEl.value = '';
+      renderNotes();
+      // Scroll to new note
+      setTimeout(() => {
+        const el = notesWrap.querySelector(`[data-id="${note.id}"]`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 0);
+    }
+
+    function editNote(id) {
+      const idx = notes.findIndex(n => n.id === id);
+      if (idx === -1) return;
+      const n = notes[idx];
+      const newTimeStr = prompt('Edit timestamp (hh:mm:ss, mm:ss, 90, or 1m30s):', secondsToTime(n.time));
+      if (newTimeStr === null) return; // cancelled
+      const newTime = timeToSeconds(newTimeStr);
+      if (!Number.isFinite(newTime)) { alert('Invalid time'); return; }
+      const newText = prompt('Edit note text:', n.text);
+      if (newText === null) return;
+      n.time = Math.max(0, Math.floor(newTime));
+      n.text = newText.trim();
+      notes.sort((a,b) => a.time - b.time);
+      saveNotesToStorage();
+      renderNotes();
+    }
+
+    function deleteNote(id) {
+      const idx = notes.findIndex(n => n.id === id);
+      if (idx === -1) return;
+      if (!confirm('Delete this note?')) return;
+      notes.splice(idx, 1);
+      saveNotesToStorage();
+      renderNotes();
+    }
+
+    function safeRemove(key){ try { localStorage.removeItem(key); return true; } catch(_) { return false; } }
+
+    function clearAll() {
+      if (!currentVideoId) return;
+      if (!confirm('Delete all notes for this video?')) return;
+      notes = [];
+      safeRemove(lsKey(currentVideoId));
+      upsertIndex(currentVideoId, 0);
+      renderNotes();
+      flashSaved('Notes deleted');
+    }
+
+    function shake(el) {
+      el.style.transform = 'translateX(0)';
+      el.animate([
+        { transform: 'translateX(0)' },
+        { transform: 'translateX(-6px)' },
+        { transform: 'translateX(6px)' },
+        { transform: 'translateX(0)' }
+      ], { duration: 160, iterations: 1 });
+    }
+
+    function exportJson() {
+      if (!notes.length) { alert('No notes to export'); return; }
+      const data = { videoId: currentVideoId, exportedAt: new Date().toISOString(), notes };
+      downloadFile(JSON.stringify(data, null, 2), `yt-notes-${currentVideoId}.json`, 'application/json');
+    }
+
+    function exportCsv() {
+      if (!notes.length) { alert('No notes to export'); return; }
+      const lines = [['time', 'time_formatted', 'note']]
+        .concat(notes.map(n => [n.time, secondsToTime(n.time), n.text.replace(/\\n/g, ' ')]))
+        .map(row => row.map(v => typeof v === 'string' && v.includes(',') ? '"' + v.replace(/"/g, '""') + '"' : v).join(','));
+      const csv = lines.join('\\n');
+      downloadFile(csv, `yt-notes-${currentVideoId}.csv`, 'text/csv');
+    }
+
+    function downloadFile(content, filename, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function importJson(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          if (!data || !Array.isArray(data.notes)) throw new Error('Invalid file');
+          if (data.videoId && currentVideoId && data.videoId !== currentVideoId) {
+            if (!confirm('Imported notes are for another video. Import anyway?')) return;
+          }
+          const cleaned = data.notes.map(n => ({ id: uuid(), time: Math.max(0, Math.floor(Number(n.time) || 0)), text: String(n.text || '').trim(), createdAt: Date.now() }));
+          notes = cleaned.sort((a,b) => a.time - b.time);
+          saveNotesToStorage();
+          renderNotes();
+        } catch (err) {
+          alert('Could not import this file');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // ---- Library (index) handling ----
+    function loadIndex(){
+      try { return JSON.parse(localStorage.getItem(INDEX_KEY) || '[]'); } catch(_) { return []; }
+    }
+    function saveIndex(list){ localStorage.setItem(INDEX_KEY, JSON.stringify(list)); }
+    function upsertIndex(videoId, noteCount){
+      if (!videoId) return;
+      const list = loadIndex();
+      const now = Date.now();
+      const thumb = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+      const idx = list.findIndex(e => e.videoId === videoId);
+      const base = { videoId, title: list[idx]?.title || '', thumb, noteCount, updatedAt: now };
+      if (idx >= 0) list.splice(idx, 1);
+      list.unshift(base);
+      // prune to last 50
+      saveIndex(list.slice(0, 50));
+      renderLibrary();
+    }
+    async function fetchAndUpdateTitle(videoId){
+      // best-effort oEmbed
+      try {
+        const url = `https://www.youtube.com/oembed?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + videoId)}&format=json`;
+        const res = await fetch(url, { mode: 'cors' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.title) {
+          const list = loadIndex();
+          const i = list.findIndex(e => e.videoId === videoId);
+          if (i >= 0) { list[i].title = data.title; saveIndex(list); renderLibrary(); }
+        }
+      } catch(_) { /* ignore */ }
+    }
+
+    function renderLibrary(){
+      const list = loadIndex();
+      libraryGrid.innerHTML = '';
+      if (!list.length) {
+        const div = document.createElement('div');
+        div.className = 'empty';
+        div.textContent = 'No saved videos yet. Load a video and add a note to see it here.';
+        libraryGrid.appendChild(div);
+        return;
+      }
+      list.forEach(entry => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        const thumb = document.createElement('div');
+        thumb.className = 'thumb';
+        thumb.style.backgroundImage = `url('${entry.thumb}')`;
+        const body = document.createElement('div');
+        body.className = 'body';
+        const title = document.createElement('div');
+        title.className = 'title';
+        title.textContent = entry.title || entry.videoId;
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = `${entry.noteCount || 0} note${(entry.noteCount||0)===1?'':'s'} · ${timeAgo(entry.updatedAt)}`;
+        body.appendChild(title); body.appendChild(meta);
+        const foot = document.createElement('div');
+        foot.className = 'foot';
+        const openBtn = document.createElement('button');
+        openBtn.className = 'btn small primary';
+        openBtn.textContent = 'Open';
+        openBtn.addEventListener('click', () => { videoUrlEl.value = entry.videoId; initOrLoadPlayer(entry.videoId); window.scrollTo({ top: libraryPanel.offsetTop, behavior: 'smooth' }); });
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn small danger';
+        delBtn.textContent = 'Delete notes';
+        delBtn.addEventListener('click', () => {
+          if (!confirm('Delete all notes for this video?')) return;
+          safeRemove(lsKey(entry.videoId));
+          if (currentVideoId === entry.videoId) { notes = []; renderNotes(); }
+          // update index count
+          upsertIndex(entry.videoId, 0);
+          flashSaved('Notes deleted');
+        });
+        foot.appendChild(openBtn); foot.appendChild(delBtn);
+        card.appendChild(thumb); card.appendChild(body); card.appendChild(foot);
+        libraryGrid.appendChild(card);
+      });
+    }
+
+    function timeAgo(ts){
+      const s = Math.max(0, Math.floor((Date.now() - (ts||0)) / 1000));
+      if (s < 60) return s + 's ago';
+      const m = Math.floor(s/60); if (m < 60) return m + 'm ago';
+      const h = Math.floor(m/60); if (h < 24) return h + 'h ago';
+      const d = Math.floor(h/24); if (d < 7) return d + 'd ago';
+      const w = Math.floor(d/7); if (w < 5) return w + 'w ago';
+      const mo = Math.floor(d/30); if (mo < 12) return mo + 'mo ago';
+      const y = Math.floor(d/365); return y + 'y ago';
+    }
+
+    refreshLibraryBtn.addEventListener('click', renderLibrary);
+    clearLibraryBtn.addEventListener('click', () => {
+      if (!confirm('Clear your saved videos list? This does not delete the notes themselves.')) return;
+      saveIndex([]);
+      renderLibrary();
+      flashSaved('List cleared');
+    });
+
+    // --- Events ---
+    loadBtn.addEventListener('click', () => {
+      const id = parseVideoId(videoUrlEl.value);
+      if (!id) {
+        urlHint.textContent = 'Please enter a valid YouTube URL or 11-character video ID.';
+        urlHint.classList.remove('hidden');
+        shake(videoUrlEl);
+        return;
+      }
+      urlHint.classList.add('hidden');
+      initOrLoadPlayer(id);
+    });
+
+    videoUrlEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter') loadBtn.click();
+    });
+
+    useCurrentBtn.addEventListener('click', () => {
+      const t = getCurrentPlayerTimeSafe();
+      if (!Number.isFinite(t)) { shake(useCurrentBtn); showError('Player not ready yet. Click Play, then try again.'); return; }
+      timestampEl.value = secondsToTime(t);
+      timestampEl.focus();
+      hideError();
+    });
+
+    saveNoteBtn.addEventListener('click', addNote);
+    noteTextEl.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); addNote(); } });
+
+    importInput.addEventListener('change', () => {
+      const file = importInput.files && importInput.files[0];
+      if (file) importJson(file);
+      importInput.value = '';
+    });
+
+    $('#exportJsonBtn').addEventListener('click', exportJson);
+    $('#exportCsvBtn').addEventListener('click', exportCsv);
+    $('#clearAllBtn').addEventListener('click', clearAll);
+
+    // Keyboard shortcut: N to capture time quickly
+    document.addEventListener('keydown', e => {
+      if (e.key.toLowerCase() === 'n' && !e.repeat && currentVideoId) {
+        const t = getCurrentPlayerTimeSafe();
+        if (!Number.isFinite(t)) { showError('Player not ready yet. Click Play, then try again.'); return; }
+        timestampEl.value = secondsToTime(t);
+        noteTextEl.focus();
+      }
+    });
+
+    // Load from URL ?v= or last opened video
+    (function bootFromUrl() {
+      const params = new URL(location.href).searchParams;
+      const v = params.get('v');
+      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) {
+        videoUrlEl.value = v;
+        initOrLoadPlayer(v);
+      } else {
+        const last = localStorage.getItem(LAST_KEY);
+        if (last && /^[a-zA-Z0-9_-]{11}$/.test(last)) {
+          videoUrlEl.value = last;
+          initOrLoadPlayer(last);
+        }
+      }
+      renderLibrary();
+    })();
+
+    // --- Basic tests (run in console) ---
+    (function selfTests(){
+      console.groupCollapsed('Self-tests');
+      // timeToSeconds
+      console.assert(timeToSeconds('1:30') === 90, '1:30 -> 90');
+      console.assert(timeToSeconds('01:02:03') === 3723, '01:02:03 -> 3723');
+      console.assert(timeToSeconds('90') === 90, '90 -> 90');
+      console.assert(timeToSeconds('1m30s') === 90, '1m30s -> 90');
+      console.assert(timeToSeconds('2h') === 7200, '2h -> 7200');
+      console.assert(timeToSeconds('75s') === 75, '75s -> 75');
+      console.assert(timeToSeconds('2:03') === 123, '2:03 -> 123');
+      console.assert(secondsToTime(0) === '0:00', '0 -> 0:00');
+      console.assert(secondsToTime(3723) === '1:02:03', '3723 -> 1:02:03');
+      // parseVideoId
+      console.assert(parseVideoId('dQw4w9WgXcQ') === 'dQw4w9WgXcQ', 'Plain ID');
+      console.assert(parseVideoId('https://youtu.be/dQw4w9WgXcQ') === 'dQw4w9WgXcQ', 'youtu.be');
+      console.assert(parseVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=10s') === 'dQw4w9WgXcQ', 'watch?v=');
+      console.assert(parseVideoId('https://www.youtube.com/shorts/dQw4w9WgXcQ') === 'dQw4w9WgXcQ', '/shorts/');
+      console.assert(parseVideoId('https://www.youtube.com/embed/dQw4w9WgXcQ') === 'dQw4w9WgXcQ', '/embed/');
+      // safe player time must not throw before init
+      console.assert(Number.isNaN(getCurrentPlayerTimeSafe()), 'safe time before player is NaN');
+      // index upsert (pure-ish)
+      const _bk = localStorage.getItem(INDEX_KEY);
+      saveIndex([]);
+      upsertIndex('vidAAAAAAAB', 3);
+      upsertIndex('vidAAAAAAAC', 1);
+      let list = loadIndex();
+      console.assert(list.length === 2 && list[0].videoId === 'vidAAAAAAAC', 'index ordering newest first');
+      fetchAndUpdateTitle('dQw4w9WgXcQ'); // no assert, just ensure no throw
+      localStorage.setItem(INDEX_KEY, _bk || '[]');
+      // Added extra sanity tests
+      console.assert(timeToSeconds('00:00') === 0, '00:00 -> 0');
+      console.assert(secondsToTime(61) === '1:01', '61 -> 1:01');
+      console.assert(parseVideoId('not a url') === null, 'invalid input returns null');
+      try { setQuery('dQw4w9WgXcQ'); console.assert(true, 'setQuery does not throw'); } catch(e) { console.assert(false, 'setQuery threw'); }
+      console.groupEnd();
+    })();
+  </script>
+</body>
+</html>
